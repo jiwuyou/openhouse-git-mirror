@@ -1,0 +1,39 @@
+services:
+  forgejo:
+    image: ${FORGEJO_IMAGE:-codeberg.org/forgejo/forgejo:11-rootless}
+    restart: unless-stopped
+    environment:
+      FORGEJO__server__ROOT_URL: ${FORGEJO_PUBLIC_URL:-http://127.0.0.1:3000/}
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__repository__DEFAULT_PRIVATE: public
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:2222:2222"
+    volumes:
+      - ./data/forgejo:/var/lib/gitea
+      - ./data/forgejo-config:/etc/gitea
+
+  mirror:
+    build:
+      context: ..
+    restart: unless-stopped
+    env_file:
+      - runtime.env
+      - secrets.env
+    ports:
+      - "127.0.0.1:20879:20879"
+    volumes:
+      - ./data/mirror:/data
+    tmpfs:
+      - /work:size=128m,mode=0700
+    depends_on:
+      - forgejo
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

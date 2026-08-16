@@ -1,0 +1,12 @@
+[
+  {
+    "repositoryUrl": "https://github.com/jiwuyou/wuxianpi.git",
+    "mode": "tracking",
+    "branch": "main"
+  },
+  {
+    "repositoryUrl": "https://github.com/jiwuyou/deepseek-harness-openhouse.git",
+    "mode": "tracking",
+    "branch": "main"
+  }
+]

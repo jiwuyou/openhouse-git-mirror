@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+work/
+.env
+deployment/runtime.env
+deployment/secrets.env
+deployment/data/
