@@ -6,6 +6,10 @@ services:
       FORGEJO__server__ROOT_URL: ${FORGEJO_PUBLIC_URL:-http://127.0.0.1:3000/}
       FORGEJO__service__DISABLE_REGISTRATION: "true"
       FORGEJO__repository__DEFAULT_PRIVATE: public
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__security__SECRET_KEY: ${FORGEJO_SECRET_KEY:?FORGEJO_SECRET_KEY is required}
+      FORGEJO__security__INTERNAL_TOKEN: ${FORGEJO_INTERNAL_TOKEN:?FORGEJO_INTERNAL_TOKEN is required}
     ports:
       - "127.0.0.1:3000:3000"
       - "127.0.0.1:2222:2222"

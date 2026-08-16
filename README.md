@@ -70,7 +70,7 @@ and add the returned URL to its existing `gitSources` install-plan field.
 cd deployment
 cp runtime.env.example runtime.env
 cp secrets.env.example secrets.env
-docker compose up -d --build
+docker compose --env-file runtime.env --env-file secrets.env up -d --build
 ```
 
 On the first Forgejo start, create the `openhouse` organization and a

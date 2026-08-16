@@ -1,0 +1,5 @@
+data/
+runtime.env
+secrets.env
+.env
+.forgejo-*-password
