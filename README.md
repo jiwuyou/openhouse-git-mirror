@@ -24,6 +24,7 @@ Required service configuration:
 ```text
 MIRROR_API_TOKEN
 FORGEJO_BASE_URL
+FORGEJO_PUBLIC_URL
 FORGEJO_TOKEN
 FORGEJO_OWNER
 ```

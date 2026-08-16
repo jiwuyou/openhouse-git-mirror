@@ -74,6 +74,7 @@ function config(): MirrorConfig {
     seedFile: null,
     githubToken: "",
     forgejoBaseUrl: "https://git.example.com",
+    forgejoPublicUrl: "https://git.example.com",
     forgejoToken: "",
     forgejoOwner: "openhouse",
     forgejoOwnerKind: "organization",

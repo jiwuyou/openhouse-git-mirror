@@ -46,7 +46,7 @@ export class MirrorService {
       approvedCommit,
       forgejoOwner: this.config.forgejoOwner,
       forgejoRepository,
-      mirrorUrl: `${this.config.forgejoBaseUrl}/${encodeURIComponent(this.config.forgejoOwner)}/${encodeURIComponent(forgejoRepository)}.git`,
+      mirrorUrl: `${this.config.forgejoPublicUrl}/${encodeURIComponent(this.config.forgejoOwner)}/${encodeURIComponent(forgejoRepository)}.git`,
       maxSizeBytes,
       intervalSeconds,
       nextSyncAt: mode === "tracking" ? addSeconds(timestamp, intervalSeconds) : null,

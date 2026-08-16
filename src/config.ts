@@ -17,6 +17,7 @@ export interface MirrorConfig {
   seedFile: string | null;
   githubToken: string;
   forgejoBaseUrl: string;
+  forgejoPublicUrl: string;
   forgejoToken: string;
   forgejoOwner: string;
   forgejoOwnerKind: ForgejoOwnerKind;
@@ -43,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MirrorConfig {
   if (port > 65535) throw new Error("MIRROR_PORT is invalid");
   const ownerKind = env.FORGEJO_OWNER_KIND ?? "organization";
   if (ownerKind !== "organization" && ownerKind !== "user") throw new Error("FORGEJO_OWNER_KIND is invalid");
+  const forgejoBaseUrl = origin(env.FORGEJO_BASE_URL, "http://127.0.0.1:3000", "FORGEJO_BASE_URL");
   return {
     host: env.MIRROR_HOST ?? "127.0.0.1",
     port,
@@ -56,7 +58,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MirrorConfig {
     defaultIntervalSeconds: integer(env.MIRROR_DEFAULT_INTERVAL_SECONDS, 3600, "MIRROR_DEFAULT_INTERVAL_SECONDS", 60),
     seedFile: env.MIRROR_SEED_FILE?.trim() ? resolve(env.MIRROR_SEED_FILE) : null,
     githubToken: env.GITHUB_TOKEN?.trim() ?? "",
-    forgejoBaseUrl: origin(env.FORGEJO_BASE_URL, "http://127.0.0.1:3000", "FORGEJO_BASE_URL"),
+    forgejoBaseUrl,
+    forgejoPublicUrl: origin(env.FORGEJO_PUBLIC_URL, forgejoBaseUrl, "FORGEJO_PUBLIC_URL"),
     forgejoToken: env.FORGEJO_TOKEN?.trim() ?? "",
     forgejoOwner: env.FORGEJO_OWNER?.trim() || "openhouse",
     forgejoOwnerKind: ownerKind,
