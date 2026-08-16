@@ -29,7 +29,7 @@ services:
     volumes:
       - ./data/mirror:/data
     tmpfs:
-      - /work:size=128m,mode=0700
+      - /work:rw,exec,size=128m,mode=0700
     depends_on:
       - forgejo
     security_opt:
