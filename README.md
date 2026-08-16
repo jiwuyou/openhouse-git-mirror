@@ -43,12 +43,25 @@ All `/api/v1/*` routes require `Authorization: Bearer <MIRROR_API_TOKEN>`.
 ```text
 POST /api/v1/targets
 GET  /api/v1/targets
+PATCH /api/v1/targets/:id
+GET  /api/v1/targets/:id/jobs
 POST /api/v1/targets/:id/sync
 POST /api/v1/targets/:id/pause
 POST /api/v1/targets/:id/resume
 POST /api/v1/releases
 GET  /api/v1/sources?repositoryUrl=...&approvedCommit=...
 ```
+
+Tracking targets accept `branch`, `intervalSeconds`, and `maxSizeBytes`
+updates. The repository identity and Forgejo destination are immutable. Manual
+sync requests are coalesced while another manual sync is pending or running.
+Pausing stops future tracking updates, but previously verified snapshots remain
+available through `sources`. The service enforces a hard 30 MiB upper bound even
+when a caller requests a larger limit.
+
+Target creation and Release registration accept only anonymously accessible
+public GitHub repositories. No GitHub credential is used for this admission
+check or for cloning, so a private repository cannot be mirrored accidentally.
 
 Register an approved Package Release:
 

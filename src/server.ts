@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { MirrorError } from "./errors.js";
+import { requirePublicGitHubRepository } from "./github.js";
 import { MirrorService } from "./service.js";
 
 export interface MirrorServerOptions {
@@ -45,11 +46,22 @@ async function route(options: MirrorServerOptions, request: IncomingMessage, res
       return;
     }
     if (parts.length === 1 && method === "POST") {
-      sendJson(response, 202, service.registerTarget(await readJson(request) as never));
+      const input = await readJson(request) as { repositoryUrl?: unknown };
+      if (typeof input.repositoryUrl !== "string") throw new MirrorError("invalid_request", "repositoryUrl is required");
+      await requirePublicGitHubRepository(input.repositoryUrl);
+      sendJson(response, 202, service.registerTarget(input as never));
       return;
     }
     if (parts[1] && parts.length === 2 && method === "GET") {
       sendJson(response, 200, { target: service.getTarget(parts[1]) });
+      return;
+    }
+    if (parts[1] && parts.length === 2 && method === "PATCH") {
+      sendJson(response, 200, { target: service.updateTarget(parts[1], await readJson(request) as never) });
+      return;
+    }
+    if (parts[1] && parts.length === 3 && parts[2] === "jobs" && method === "GET") {
+      sendJson(response, 200, { jobs: service.listJobsForTarget(parts[1]) });
       return;
     }
     if (parts[1] && parts.length === 3 && method === "POST") {
@@ -62,7 +74,10 @@ async function route(options: MirrorServerOptions, request: IncomingMessage, res
   }
 
   if (parts[0] === "releases" && parts.length === 1 && method === "POST") {
-    sendJson(response, 202, service.registerRelease(await readJson(request) as never));
+    const input = await readJson(request) as { repositoryUrl?: unknown };
+    if (typeof input.repositoryUrl !== "string") throw new MirrorError("invalid_request", "repositoryUrl is required");
+    await requirePublicGitHubRepository(input.repositoryUrl);
+    sendJson(response, 202, service.registerRelease(input as never));
     return;
   }
 
@@ -128,6 +143,7 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
 function errorStatus(code: string): number {
   if (code === "route_not_found" || code === "target_not_found") return 404;
   if (code === "target_paused") return 409;
+  if (code === "github_verification_unavailable") return 503;
   if (code === "api_auth_invalid") return 401;
   if (code === "api_auth_not_configured") return 503;
   if (code === "request_too_large") return 413;

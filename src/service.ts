@@ -9,7 +9,7 @@ import {
   requireBranch,
   requireCommit,
 } from "./repository.js";
-import type { ClaimedMirrorJob, MirrorMode, ReleaseMirrorRequest } from "./types.js";
+import { DEFAULT_MAX_MIRROR_BYTES, type ClaimedMirrorJob, type MirrorMode, type ReleaseMirrorRequest } from "./types.js";
 
 const now = () => new Date().toISOString();
 
@@ -18,6 +18,12 @@ export interface CreateMirrorTargetRequest {
   mode?: MirrorMode;
   branch?: string;
   approvedCommit?: string;
+  maxSizeBytes?: number;
+  intervalSeconds?: number;
+}
+
+export interface UpdateMirrorTargetRequest {
+  branch?: string;
   maxSizeBytes?: number;
   intervalSeconds?: number;
 }
@@ -35,7 +41,7 @@ export class MirrorService {
     const branch = mode === "tracking" ? requireBranch(input.branch ?? "main") : null;
     const approvedCommit = input.approvedCommit ? requireCommit(input.approvedCommit) : null;
     if (mode === "pinned" && !approvedCommit) throw new MirrorError("commit_required", "Pinned mirrors require approvedCommit");
-    const maxSizeBytes = positiveInteger(input.maxSizeBytes ?? this.config.defaultMaxBytes, "maxSizeBytes", 1024);
+    const maxSizeBytes = this.mirrorSize(input.maxSizeBytes ?? this.config.defaultMaxBytes);
     const intervalSeconds = positiveInteger(input.intervalSeconds ?? this.config.defaultIntervalSeconds, "intervalSeconds", 60);
     const timestamp = now();
     const forgejoRepository = forgejoRepositoryName(identity);
@@ -89,6 +95,8 @@ export class MirrorService {
   runNow(targetId: string) {
     const target = this.requireTarget(targetId);
     if (target.status === "paused") throw new MirrorError("target_paused", "Resume the mirror before running it");
+    const active = this.database.findActiveManualJob(targetId);
+    if (active) return active;
     const timestamp = now();
     return this.database.enqueueJob({
       targetId,
@@ -113,6 +121,27 @@ export class MirrorService {
       status: target.lastSyncedCommit ? "ready" : "active",
       nextSyncAt: target.mode === "tracking" ? timestamp : null,
       lastError: null,
+      updatedAt: timestamp,
+    })!;
+  }
+
+  updateTarget(targetId: string, input: UpdateMirrorTargetRequest) {
+    const target = this.requireTarget(targetId);
+    if (target.mode !== "tracking") throw new MirrorError("target_not_tracking", "Only tracking mirrors can be adjusted");
+    if (input.branch === undefined && input.maxSizeBytes === undefined && input.intervalSeconds === undefined) {
+      throw new MirrorError("invalid_request", "At least one tracking field is required");
+    }
+    const timestamp = now();
+    const intervalSeconds = input.intervalSeconds === undefined
+      ? target.intervalSeconds
+      : positiveInteger(input.intervalSeconds, "intervalSeconds", 60);
+    return this.database.updateTarget(targetId, {
+      ...(input.branch === undefined ? {} : { branch: requireBranch(input.branch) }),
+      ...(input.maxSizeBytes === undefined ? {} : { maxSizeBytes: this.mirrorSize(input.maxSizeBytes) }),
+      ...(input.intervalSeconds === undefined ? {} : {
+        intervalSeconds,
+        nextSyncAt: target.status === "paused" ? target.nextSyncAt : addSeconds(timestamp, intervalSeconds),
+      }),
       updatedAt: timestamp,
     })!;
   }
@@ -151,6 +180,11 @@ export class MirrorService {
     return this.database.listJobs();
   }
 
+  listJobsForTarget(targetId: string) {
+    this.requireTarget(targetId);
+    return this.database.listJobsForTarget(targetId);
+  }
+
   getTarget(targetId: string) {
     return this.requireTarget(targetId);
   }
@@ -177,6 +211,13 @@ export class MirrorService {
     const target = this.database.getTarget(targetId);
     if (!target) throw new MirrorError("target_not_found", "Mirror target does not exist");
     return target;
+  }
+
+  private mirrorSize(value: number): number {
+    const result = positiveInteger(value, "maxSizeBytes", 1024);
+    const maximum = Math.min(this.config.defaultMaxBytes, DEFAULT_MAX_MIRROR_BYTES);
+    if (result > maximum) throw new MirrorError("mirror_size_limit_exceeded", `maxSizeBytes cannot exceed ${maximum}`);
+    return result;
   }
 }
 

@@ -258,13 +258,29 @@ export class MirrorDatabase {
       .all(limit) as unknown as JobRow[]).map((row) => this.mapJob(row));
   }
 
+  listJobsForTarget(targetId: string, limit = 100): MirrorJob[] {
+    return (this.sqlite.prepare(`
+      SELECT * FROM mirror_jobs WHERE target_id = ?
+      ORDER BY created_at DESC, job_id DESC LIMIT ?
+    `).all(targetId, limit) as unknown as JobRow[]).map((row) => this.mapJob(row));
+  }
+
+  findActiveManualJob(targetId: string): MirrorJob | null {
+    const row = this.sqlite.prepare(`
+      SELECT * FROM mirror_jobs
+      WHERE target_id = ? AND idempotency_key LIKE 'manual:%' AND status IN ('pending', 'running')
+      ORDER BY created_at ASC, job_id ASC LIMIT 1
+    `).get(targetId) as JobRow | undefined;
+    return row ? this.mapJob(row) : null;
+  }
+
   claimNextJob(timestamp: string, leaseUntil: string): ClaimedMirrorJob | null {
     this.sqlite.exec("BEGIN IMMEDIATE");
     try {
       const row = this.sqlite.prepare(`
         SELECT j.* FROM mirror_jobs j
         JOIN mirror_targets t ON t.target_id = j.target_id
-        WHERE t.status <> 'paused' AND (
+        WHERE (t.status <> 'paused' OR j.release_id IS NOT NULL) AND (
           (j.status = 'pending' AND j.available_at <= ?) OR
           (j.status = 'running' AND j.lease_until IS NOT NULL AND j.lease_until <= ?)
         )
@@ -296,7 +312,8 @@ export class MirrorDatabase {
         WHERE job_id = ? AND status = 'running'
       `).run(timestamp, jobId);
       this.sqlite.prepare(`
-        UPDATE mirror_targets SET status = 'ready', current_size_bytes = ?, last_synced_commit = ?,
+        UPDATE mirror_targets SET status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'ready' END,
+          current_size_bytes = ?, last_synced_commit = ?,
           last_error = NULL, updated_at = ? WHERE target_id = ?
       `).run(result.sizeBytes, result.sourceCommit, timestamp, job.targetId);
       const snapshotId = id("snapshot");
@@ -328,7 +345,8 @@ export class MirrorDatabase {
         WHERE job_id = ? AND status = 'running'
       `).run(message, timestamp, jobId);
       this.sqlite.prepare(`
-        UPDATE mirror_targets SET status = 'oversized', current_size_bytes = ?, last_error = ?, updated_at = ?
+        UPDATE mirror_targets SET status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'oversized' END,
+          current_size_bytes = ?, last_error = ?, updated_at = ?
         WHERE target_id = ?
       `).run(sizeBytes, message, timestamp, job.targetId);
       this.insertEvent(job.targetId, jobId, "oversized", { sizeBytes, message }, timestamp);
@@ -352,7 +370,8 @@ export class MirrorDatabase {
       `).run(retry ? "pending" : "failed", availableAt, message, timestamp, jobId);
       const target = this.getTarget(job.targetId)!;
       this.sqlite.prepare(`
-        UPDATE mirror_targets SET status = ?, last_error = ?, updated_at = ? WHERE target_id = ?
+        UPDATE mirror_targets SET status = CASE WHEN status = 'paused' THEN 'paused' ELSE ? END,
+          last_error = ?, updated_at = ? WHERE target_id = ?
       `).run(target.lastSyncedCommit ? "ready" : retry ? "active" : "failed", message, timestamp, job.targetId);
       this.insertEvent(job.targetId, jobId, retry ? "retry_scheduled" : "failed", { message, availableAt }, timestamp);
       this.sqlite.exec("COMMIT");
@@ -366,7 +385,7 @@ export class MirrorDatabase {
     const row = this.sqlite.prepare(`
       SELECT s.*, t.mirror_url FROM mirror_snapshots s
       JOIN mirror_targets t ON t.target_id = s.target_id
-      WHERE t.repository_url = ? AND s.source_commit = ? AND t.status <> 'paused'
+      WHERE t.repository_url = ? AND s.source_commit = ?
       ORDER BY (s.release_id IS NOT NULL) DESC, s.verified_at DESC LIMIT 1
     `).get(repositoryUrl, sourceCommit) as (SnapshotRow & { mirror_url: string }) | undefined;
     return row ? { mirrorUrl: row.mirror_url, snapshot: this.mapSnapshot(row) } : null;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MirrorConfig } from "../src/config.js";
 import { MirrorDatabase } from "../src/database.js";
+import { MirrorError } from "../src/errors.js";
 import { MirrorService } from "../src/service.js";
 
 const COMMIT = "1111111111111111111111111111111111111111";
@@ -56,6 +57,55 @@ test("an oversized update preserves the last verified snapshot", () => {
   assert.equal(target.status, "oversized");
   assert.equal(target.lastSyncedCommit, COMMIT);
   assert.equal(service.findSource(target.repositoryUrl, COMMIT)?.snapshot.sourceCommit, COMMIT);
+  database.close();
+});
+
+test("paused targets keep verified snapshots and preserve pause across an in-flight job", () => {
+  const database = new MirrorDatabase(":memory:");
+  const service = new MirrorService(database, config());
+  const registered = service.registerTarget({ repositoryUrl: "https://github.com/example/paused" });
+  const initial = service.claimJob();
+  assert.ok(initial);
+
+  service.pause(registered.target.id);
+  database.completeJob(initial.job.id, { sourceCommit: COMMIT, mirrorRef: null, sizeBytes: 1024 }, new Date().toISOString());
+
+  assert.equal(service.getTarget(registered.target.id).status, "paused");
+  assert.equal(service.findSource(registered.target.repositoryUrl, COMMIT)?.snapshot.sourceCommit, COMMIT);
+  assert.throws(() => service.runNow(registered.target.id), (error) => error instanceof MirrorError && error.code === "target_paused");
+  database.close();
+});
+
+test("manual synchronization is coalesced and target jobs can be queried", () => {
+  const database = new MirrorDatabase(":memory:");
+  const service = new MirrorService(database, config());
+  const registered = service.registerTarget({ repositoryUrl: "https://github.com/example/coalesced" });
+
+  const first = service.runNow(registered.target.id);
+  const second = service.runNow(registered.target.id);
+
+  assert.equal(first.id, second.id);
+  assert.equal(service.listJobsForTarget(registered.target.id).length, 2, "initial and one manual job");
+  database.close();
+});
+
+test("tracking settings are adjustable but the global size ceiling is enforced", () => {
+  const database = new MirrorDatabase(":memory:");
+  const service = new MirrorService(database, config());
+  const registered = service.registerTarget({ repositoryUrl: "https://github.com/example/settings" });
+
+  const updated = service.updateTarget(registered.target.id, {
+    branch: "stable",
+    intervalSeconds: 7200,
+    maxSizeBytes: 10 * 1024 * 1024,
+  });
+  assert.equal(updated.branch, "stable");
+  assert.equal(updated.intervalSeconds, 7200);
+  assert.equal(updated.maxSizeBytes, 10 * 1024 * 1024);
+  assert.throws(
+    () => service.updateTarget(registered.target.id, { maxSizeBytes: 30 * 1024 * 1024 + 1 }),
+    (error) => error instanceof MirrorError && error.code === "mirror_size_limit_exceeded",
+  );
   database.close();
 });
 
